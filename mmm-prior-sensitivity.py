@@ -6,11 +6,12 @@ app = marimo.App(width="medium")
 with app.setup(hide_code=True):
     import marimo as mo
     import matplotlib.pyplot as plt
+    import arviz as az
+    from arviz_stats.psense import power_scale_dataset
     from pymc_marketing.mmm import MMM
     from pymc_marketing.mmm.components.saturation import LogisticSaturation
     from pymc_marketing.mmm.components.adstock import GeometricAdstock
     from pymc_extras.prior import Prior
-    import arviz as az
     import xarray as xr
     import pandas as pd
     import numpy as np
@@ -415,13 +416,6 @@ def _(mmm2):
         var_names=[var.name for var in mmm2.model.free_RVs],
     )
     return
-
-
-@app.cell
-def _():
-    from arviz_stats.psense import power_scale_dataset
-
-    return (power_scale_dataset,)
 
 
 @app.cell
