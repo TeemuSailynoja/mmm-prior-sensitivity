@@ -1,3 +1,20 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "arviz==1.3.0",
+#     "arviz-stats==1.3.1",
+#     "marimo>=0.24.0",
+#     "matplotlib==3.11.1",
+#     "numpy==2.4.6",
+#     "nutpie==0.16.11",
+#     "pandas==3.0.5",
+#     "pymc==6.2.0",
+#     "pymc-extras==0.14.0",
+#     "pymc-marketing==1.1.0",
+#     "xarray==2026.7.0",
+# ]
+# ///
+
 import marimo
 
 __generated_with = "0.24.0"
@@ -419,7 +436,7 @@ def _(mmm2):
 
 
 @app.cell
-def _(mmm2, power_scale_dataset):
+def _(mmm2):
     p_scaled = power_scale_dataset(
         mmm2.idata,
         group="likelihood",
