@@ -54,18 +54,16 @@ with app.setup(hide_code=True):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    # Resolving prior-observation conflict with lift tests
+    # Resolving prior-data conflict with lift tests
 
     This notebook uses the PyMC-Marketing ROAS case-study model from
     [Mitigating Unobserved Confounders in MMMs with Lift Test Likelihoods](https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_roas.html).
 
-    The case study is useful for demonstrating how lift tests can resolve conflicts between business priors and observational data. That lets us ask a practical question:
-
-    > When the model's posterior disagrees with the business's prior expectations, is that disagreement a signal that the model is wrong, or that the observational data are confounded?
+    In this case study, I demonstrate how **lift tests can resolve conflicts between business expectations and observational data**.
 
     We fit two models:
 
-    1. **Business-prior MMM**: the marketing team provides their expectations for channel ROAS as cost-per-target calibration likelihoods, fitted against observational sales data.
+    1. **Business-prior MMM**: the marketing team provides their expectations for channel ROAS and these are incorporated to the MMM priors.
     2. **Lift-calibrated MMM**: the same model plus lift-test likelihoods on the saturation curves.
 
     We focus on media priors (adstock and saturation parameters) and business priors (channel ROAS expectations) as the key sources of prior-observation conflict.
@@ -115,10 +113,9 @@ def _(model_df, true_roas_x1, true_roas_x2):
                 f"""
                 ## Data
 
-                We model only `x1`, `x2`, and `y`. The omitted variable `z` affects both spend and sales, so a model that cannot see `z` can still forecast well while producing biased ROAS.
+                Our observations contain 2.5 years of spend values for two media channels, `x1` and `x2`, as well as the observed target variable, `y`. The data generating process contains an unobserved confounder, `z`, which affects both spend and sales, so our model that cannot see `z` will still forecast well while producing biased ROAS estimates.
 
                 Known all-time true ROAS (for validation only):
-
                 - `x1`: **{true_roas_x1:0.1f}**
                 - `x2`: **{true_roas_x2:0.1f}**
                 """
@@ -131,41 +128,37 @@ def _(model_df, true_roas_x1, true_roas_x2):
 
 @app.cell
 def _(model_df):
-    _fig, _axes = plt.subplots(nrows=2, ncols=1, sharex=True, layout="constrained")
+    _fig, _axes = plt.subplots(
+        nrows=2, ncols=1, sharex=True, layout="constrained"
+    )
     sns.lineplot(x="date", y="y", data=model_df, color="black", ax=_axes[0])
     _axes[0].set_title("Target")
     spend_long = model_df.melt(
-        id_vars=["date"], value_vars=["x1", "x2"], var_name="channel", value_name="spend"
+        id_vars=["date"],
+        value_vars=["x1", "x2"],
+        var_name="channel",
+        value_name="spend",
     )
-    sns.lineplot(x="date", y="spend", hue="channel", data=spend_long, ax=_axes[1])
+    sns.lineplot(
+        x="date", y="spend", hue="channel", data=spend_long, ax=_axes[1]
+    )
     _axes[1].set_title("Channel spend")
     _fig
     return
 
 
 @app.cell
-def _(model_df):
-    cost_share = DataArray(
-        model_df[["x1", "x2"]].sum() / model_df[["x1", "x2"]].sum().sum(),
-        dims="channel",
-    )
-
+def _():
     baseline_model_config = {
         "likelihood": Prior("Normal", sigma=Prior("HalfNormal", sigma=2)),
         "gamma_fourier": Prior("Normal", mu=0, sigma=2, dims="fourier_mode"),
         "intercept_tvp_config": HSGPKwargs(
-            m=50, L=None, eta_lam=2.0, ls_mu=5.0, ls_sigma=10.0, cov_func=None
+            m=100, L=None, eta_lam=1.0, ls_mu=5.0, ls_sigma=10.0, cov_func=None
         ),
         "adstock_alpha": Prior("Beta", alpha=2, beta=3, dims="channel"),
         "saturation_lam": Prior("Gamma", alpha=2, beta=2, dims="channel"),
         "saturation_beta": Prior("HalfNormal", sigma=1, dims="channel"),
     }
-
-    # lift_model_config = baseline_model_config | {
-    #     "intercept_tvp_config": HSGPKwargs(
-    #         m=50, L=None, eta_lam=1.0, ls_mu=5.0, ls_sigma=10.0, cov_func=None
-    #     )
-    # }
 
     # Keep the interactive case study reasonably light. Increase draws for publication-quality figures.
     sampler_config = {
@@ -207,32 +200,38 @@ def _():
     mo.md(r"""
     ## Business-prior MMM
 
-    The business-prior model incorporates the marketing team's expectations for channel ROAS as cost-per-target calibration likelihoods. These expectations are elicited before any modeling is done, based on the marketing team's knowledge of their customer base, marketing strategies, and pricing.
+    The model incorporates the marketing team's expectations for channel ROAS as priors. These expectations are elicited before any modeling is done, based on the marketing team's knowledge of their customer base, marketing strategies, and pricing.
 
-    The business provides the following ROAS expectations:
+    The business provided the following ROAS expectations:
 
     - Channel `x1`: ROAS ~ Normal(100, 20)
     - Channel `x2`: ROAS ~ Normal(150, 50)
 
-    These are incorporated via `add_cost_per_target_calibration`, which adds Normal likelihood terms for each calibration row. We also set priors on the media parameters (adstock and saturation) that reflect our assumptions about how spend translates to sales.
+    These priors are incorporated via `add_cost_per_target_calibration`, which adds Normal likelihood terms for each calibration row. We also set priors on the media parameters (adstock, saturation) that reflect our assumptions about how spend translates to sales, as well as a weakly informative prior on the channel efficiency.
 
-    The key question is: **do the business priors and the media priors agree with the observational data (sales `y`)?**
+    The key observation we will see after fitting the model is: **the business-informed priors are in conflict with the observed sales!**
     """)
     return
 
 
 @app.cell
 def _(X, baseline_model_config, build_mmm, sampler_config, y):
-    business_priors_df = pd.DataFrame({
-        "channel": ["x1", "x2"],
-        "roas": [100, 150],
-        "sigma": [20, 50],
-    })
+    business_priors_df = pd.DataFrame(
+        {
+            "channel": ["x1", "x2"],
+            "roas": [100, 150],
+            "sigma": [20, 50],
+        }
+    )
 
     business_mmm = build_mmm(baseline_model_config)
     business_mmm.build_model(X, y)
     business_mmm.add_original_scale_contribution_variable(
-        var=["channel_contribution", "fourier_contribution", "intercept_contribution"]
+        var=[
+            "channel_contribution",
+            "fourier_contribution",
+            "intercept_contribution",
+        ]
     )
     business_mmm.add_cost_per_target_calibration(
         data=X,
@@ -252,51 +251,70 @@ def _(X, baseline_model_config, build_mmm, sampler_config, y):
     with business_mmm.model:
         pm.compute_log_likelihood(business_mmm.idata)
         pm.stats.compute_log_prior(business_mmm.idata)
-        business_mmm.idata["log_prior"]["business_prior"] = business_mmm.idata["log_likelihood"]["business_prior"]
+        business_mmm.idata["log_prior"]["business_prior"] = business_mmm.idata[
+            "log_likelihood"
+        ]["business_prior"]
 
-    business_mmm.idata["posterior"]["ROAS"] = business_mmm.incrementality.compute_incremental_contribution("all_time") / business_mmm.idata["constant_data"]["channel_data"].sum("date")
+    business_mmm.idata["posterior"]["ROAS"] = (
+        business_mmm.incrementality.compute_incremental_contribution(
+            "all_time"
+        )
+        / business_mmm.idata["constant_data"]["channel_data"].sum("date")
+    )
     return business_mmm, business_priors_df
 
 
 @app.cell
-def _(business_mmm):
-    az.summary(
-        business_mmm.idata,
-        kind="diagnostics",
-        var_names=["ROAS"] + [var.name for var in business_mmm.model.free_RVs],
-    )
-    return
-
-
-@app.cell
 def _(business_mmm, true_roas_x1, true_roas_x2):
-
     _pc = azp.plot_dist(
         business_mmm.idata["posterior"]["ROAS"].to_dataset(name="roas"),
         col_wrap=1,
-        figure_kwargs={"figsize": (10, 6), "sharex": True, "layout": "constrained"},
+        figure_kwargs={
+            "figsize": (10, 6),
+            "sharex": True,
+            "layout": "constrained",
+        },
     )
     business_roas_fig = _pc.viz["/"]["figure"].values.item()
     business_roas_axes = business_roas_fig.axes
-    business_roas_axes[0].axvline(true_roas_x1, color="black", linestyle="--", linewidth=2, label="true ROAS")
+    business_roas_axes[0].axvline(
+        true_roas_x1,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label="true ROAS",
+    )
     business_roas_axes[0].legend(loc="upper right")
     business_roas_axes[0].set(title="Business-prior ROAS: x1")
-    business_roas_axes[1].axvline(true_roas_x2, color="black", linestyle="--", linewidth=2, label="true ROAS")
+    business_roas_axes[1].axvline(
+        true_roas_x2,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label="true ROAS",
+    )
     business_roas_axes[1].legend(loc="upper right")
     business_roas_axes[1].set(title="Business-prior ROAS: x2", xlabel="ROAS")
-    business_roas_fig.suptitle("Business-prior MMM: prior-observation conflict for x1", fontweight="bold")
+    business_roas_fig.suptitle(
+        "Business-prior MMM: prior-observation conflict for x1",
+        fontweight="bold",
+    )
     business_roas_fig
     return
 
 
 @app.cell
 def _(business_mmm, true_roas_x1, true_roas_x2):
-    roas_x1_mean = business_mmm.idata["posterior"]["ROAS"].sel(channel="x1").mean().values
-    roas_x2_mean = business_mmm.idata["posterior"]["ROAS"].sel(channel="x2").mean().values
+    roas_x1_mean = (
+        business_mmm.idata["posterior"]["ROAS"].sel(channel="x1").mean().values
+    )
+    roas_x2_mean = (
+        business_mmm.idata["posterior"]["ROAS"].sel(channel="x2").mean().values
+    )
     mo.vstack(
         [
             mo.md(f"""
-            ### Prior-observation conflict detected
+            ### Conflict detected!
 
             The business-prior model produces ROAS estimates that conflict with the business's prior expectations for channel `x1`:
 
@@ -348,7 +366,12 @@ def _():
 def _(business_mmm):
     def roas_psense_by_block(idata):
         blocks = {
-            "media_priors": ["adstock_alpha", "saturation_lam", "saturation_beta", "business_prior"],
+            "media_priors": [
+                "adstock_alpha",
+                "saturation_lam",
+                "saturation_beta",
+                "business_prior",
+            ],
             "seasonality_prior": ["gamma_fourier"],
             "trend_baseline_priors": [
                 "intercept_baseline",
@@ -357,7 +380,11 @@ def _(business_mmm):
                 "intercept_latent_process_raw_hsgp_coefs_offset",
             ],
         }
-        likelihood_var_names = [var for var in ["y", "lift_measurements"] if var in idata["log_likelihood"].data_vars]
+        likelihood_var_names = [
+            var
+            for var in ["y", "lift_measurements"]
+            if var in idata["log_likelihood"].data_vars
+        ]
         return pd.concat(
             {
                 block_name: az.psense_summary(
@@ -382,7 +409,12 @@ def _(business_mmm):
     az.plot_psense_dist(
         business_mmm.idata,
         var_names=["ROAS"],
-        prior_var_names=["adstock_alpha", "saturation_lam", "saturation_beta", "business_prior"],
+        prior_var_names=[
+            "adstock_alpha",
+            "saturation_lam",
+            "saturation_beta",
+            "business_prior",
+        ],
         likelihood_var_names=["y"],
         coords={"channel": ["x1", "x2"]},
         kind="ecdf",
@@ -395,10 +427,139 @@ def _(business_mmm):
     az.plot_psense_quantities(
         business_mmm.idata,
         var_names=["ROAS"],
-        prior_var_names=["adstock_alpha", "saturation_lam", "saturation_beta", "business_prior"],
+        prior_var_names=[
+            "adstock_alpha",
+            "saturation_lam",
+            "saturation_beta",
+            "business_prior",
+        ],
         likelihood_var_names=["y"],
         coords={"channel": ["x1", "x2"]},
     )
+    return
+
+
+@app.cell
+def _(business_mmm, model_df):
+    fig, axes = business_mmm.plot.contributions_over_time(
+        var=[
+            "channel_contribution_original_scale",
+            "intercept_contribution_original_scale",
+            "fourier_contribution_original_scale",
+        ],
+        dims={"channel": ["x1", "x2"]},
+        combine_dims=True,
+        hdi_prob=0.94,
+        figsize=(12, 7),
+    )
+    sns.lineplot(
+        x="date", y="y", data=model_df, color="black", label="y", ax=axes[0, 0]
+    )
+    legend = axes[0, 0].get_legend()
+    legend.set_bbox_to_anchor((0.8, -0.12))
+    plt.gca()
+    return
+
+
+@app.cell
+def _(baseline_model_config):
+    adjusted_model_config = {
+        **baseline_model_config,
+        **{
+            "intercept_tvp_config": HSGPKwargs(
+                m=50,
+                L=None,
+                eta_lam=1.0,
+                ls_mu=5.0,
+                ls_sigma=5.0,
+                cov_func=None,
+            )
+        },
+    }
+    return (adjusted_model_config,)
+
+
+@app.cell
+def _(
+    X,
+    adjusted_model_config,
+    build_mmm,
+    business_priors_df,
+    sampler_config,
+    y,
+):
+    adjusted_mmm = build_mmm(adjusted_model_config)
+    adjusted_mmm.build_model(X, y)
+    adjusted_mmm.add_original_scale_contribution_variable(
+        var=[
+            "channel_contribution",
+            "fourier_contribution",
+            "intercept_contribution",
+        ]
+    )
+    adjusted_mmm.add_cost_per_target_calibration(
+        data=X,
+        calibration_data=business_priors_df,
+        name_prefix="business_prior",
+        target_column="roas",
+        target_per_cost=True,
+    )
+
+    _ = adjusted_mmm.fit(X, y, **sampler_config)
+    _ = adjusted_mmm.sample_posterior_predictive(
+        X, extend_idata=True, combined=True, random_seed=rng
+    )
+    with adjusted_mmm.model:
+        pm.compute_log_likelihood(adjusted_mmm.idata)
+        pm.stats.compute_log_prior(adjusted_mmm.idata)
+        adjusted_mmm.idata["log_prior"]["business_prior"] = adjusted_mmm.idata[
+            "log_likelihood"
+        ]["business_prior"]
+
+    adjusted_mmm.idata["posterior"]["ROAS"] = (
+        adjusted_mmm.incrementality.compute_incremental_contribution(
+            "all_time"
+        )
+        / adjusted_mmm.idata["constant_data"]["channel_data"].sum("date")
+    )
+    return (adjusted_mmm,)
+
+
+@app.cell
+def _(adjusted_mmm, model_df):
+    _fig, _axes = adjusted_mmm.plot.contributions_over_time(
+        var=[
+            "channel_contribution_original_scale",
+            "intercept_contribution_original_scale",
+            "fourier_contribution_original_scale",
+        ],
+        dims={"channel": ["x1", "x2"]},
+        combine_dims=True,
+        hdi_prob=0.94,
+        figsize=(12, 7),
+    )
+    sns.lineplot(
+        x="date", y="y", data=model_df, color="black", label="y", ax=_axes[0, 0]
+    )
+    _legend = _axes[0, 0].get_legend()
+    _legend.set_bbox_to_anchor((0.8, -0.12))
+    plt.gca()
+    return
+
+
+@app.cell
+def _(adjusted_mmm, roas_psense_by_block):
+    roas_psense_by_block(adjusted_mmm.idata)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    ## MMM with an adjusted baseline prior
+
+    We decide that the baseline prior sensitivity is not something we want in the model and we would prefer the estimate for channel 2 to be driven more strongly by the data. So we change the baseline prior to one with a
+    """)
     return
 
 
@@ -417,25 +578,43 @@ def _():
 
 
 @app.cell
-def _(X, true_roas_x1, true_roas_x2):
+def _(X, true_roas_x1):
+    # df_lift_test = pd.DataFrame(
+    #     data={
+    #         "channel": ["x1", "x2", "x1", "x2"],
+    #         "x": [0.25, 0.1, 0.8, 0.25],
+    #         "delta_x": [0.25, 0.1, 0.8, 0.25],
+    #         "delta_y": [
+    #             true_roas_x1 * 0.25,
+    #             true_roas_x2 * 0.1,
+    #             true_roas_x1 * 0.8,
+    #             true_roas_x2 * 0.25,
+    #         ],
+    #         "sigma": [3, 3, 3, 3],
+    #         "date": pd.to_datetime(
+    #             [
+    #                 X["date"].max() - pd.Timedelta(weeks=50),
+    #                 X["date"].max() - pd.Timedelta(weeks=30),
+    #                 X["date"].max() - pd.Timedelta(weeks=14),
+    #                 X["date"].max() - pd.Timedelta(weeks=12),
+    #             ]
+    #         ),
+    #     }
+    # )
     df_lift_test = pd.DataFrame(
         data={
-            "channel": ["x1", "x2", "x1", "x2"],
-            "x": [0.25, 0.1, 0.8, 0.25],
-            "delta_x": [0.25, 0.1, 0.8, 0.25],
+            "channel": ["x1", "x1"],
+            "x": [0.25, 0.8],
+            "delta_x": [0.25, 0.8],
             "delta_y": [
                 true_roas_x1 * 0.25,
-                true_roas_x2 * 0.1,
                 true_roas_x1 * 0.8,
-                true_roas_x2 * 0.25,
             ],
-            "sigma": [3, 3, 3, 3],
+            "sigma": [3, 3],
             "date": pd.to_datetime(
                 [
                     X["date"].max() - pd.Timedelta(weeks=50),
-                    X["date"].max() - pd.Timedelta(weeks=30),
                     X["date"].max() - pd.Timedelta(weeks=14),
-                    X["date"].max() - pd.Timedelta(weeks=12),
                 ]
             ),
         }
@@ -447,18 +626,22 @@ def _(X, true_roas_x1, true_roas_x2):
 @app.cell
 def _(
     X,
-    baseline_model_config,
+    adjusted_model_config,
     build_mmm,
     business_priors_df,
     df_lift_test,
     sampler_config,
     y,
 ):
-    lift_mmm = build_mmm(baseline_model_config)
+    lift_mmm = build_mmm(adjusted_model_config)
     lift_mmm.build_model(X, y)
     lift_mmm.add_lift_test_measurements(df_lift_test=df_lift_test)
     lift_mmm.add_original_scale_contribution_variable(
-        var=["channel_contribution", "fourier_contribution", "intercept_contribution"]
+        var=[
+            "channel_contribution",
+            "fourier_contribution",
+            "intercept_contribution",
+        ]
     )
 
     lift_mmm.add_cost_per_target_calibration(
@@ -476,8 +659,13 @@ def _(
         pm.compute_log_likelihood(lift_mmm.idata)
         pm.stats.compute_log_prior(lift_mmm.idata)
 
-    lift_mmm.idata["log_prior"]["business_prior"] = lift_mmm.idata["log_likelihood"]["business_prior"]
-    lift_mmm.idata["posterior"]["ROAS"] = lift_mmm.incrementality.compute_incremental_contribution("all_time") / lift_mmm.idata["constant_data"]["channel_data"].sum("date")
+    lift_mmm.idata["log_prior"]["business_prior"] = lift_mmm.idata[
+        "log_likelihood"
+    ]["business_prior"]
+    lift_mmm.idata["posterior"]["ROAS"] = (
+        lift_mmm.incrementality.compute_incremental_contribution("all_time")
+        / lift_mmm.idata["constant_data"]["channel_data"].sum("date")
+    )
     return (lift_mmm,)
 
 
@@ -497,17 +685,35 @@ def _(lift_mmm, true_roas_x1, true_roas_x2):
     _pc = azp.plot_dist(
         lift_mmm.idata["posterior"]["ROAS"].to_dataset(name="roas"),
         col_wrap=1,
-        figure_kwargs={"figsize": (10, 6), "sharex": True, "layout": "constrained"},
+        figure_kwargs={
+            "figsize": (10, 6),
+            "sharex": True,
+            "layout": "constrained",
+        },
     )
     lift_roas_fig = _pc.viz["/"]["figure"].values.item()
     lift_roas_axes = lift_roas_fig.axes
-    lift_roas_axes[0].axvline(true_roas_x1, color="black", linestyle="--", linewidth=2, label="true ROAS")
+    lift_roas_axes[0].axvline(
+        true_roas_x1,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label="true ROAS",
+    )
     lift_roas_axes[0].legend(loc="upper right")
     lift_roas_axes[0].set(title="Lift-calibrated ROAS: x1")
-    lift_roas_axes[1].axvline(true_roas_x2, color="black", linestyle="--", linewidth=2, label="true ROAS")
+    lift_roas_axes[1].axvline(
+        true_roas_x2,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label="true ROAS",
+    )
     lift_roas_axes[1].legend(loc="upper right")
     lift_roas_axes[1].set(title="Lift-calibrated ROAS: x2", xlabel="ROAS")
-    lift_roas_fig.suptitle("Lift tests resolve prior-observation conflict", fontweight="bold")
+    lift_roas_fig.suptitle(
+        "Lift tests resolve prior-observation conflict", fontweight="bold"
+    )
     lift_roas_fig
     return
 
@@ -524,7 +730,12 @@ def _(lift_mmm):
     az.plot_psense_dist(
         lift_mmm.idata,
         var_names=["ROAS"],
-        prior_var_names=["adstock_alpha", "saturation_lam", "saturation_beta", "business_prior"],
+        prior_var_names=[
+            "adstock_alpha",
+            "saturation_lam",
+            "saturation_beta",
+            "business_prior",
+        ],
         likelihood_var_names=["y", "lift_measurements"],
         coords={"channel": ["x1", "x2"]},
         kind="ecdf",
@@ -545,7 +756,10 @@ def _():
 @app.cell
 def _(business_roas_psense, lift_roas_psense):
     psense_comparison = pd.concat(
-        {"business_prior": business_roas_psense, "lift_calibrated": lift_roas_psense},
+        {
+            "business_prior": business_roas_psense,
+            "lift_calibrated": lift_roas_psense,
+        },
         names=["model"],
     )
     psense_comparison
@@ -553,21 +767,46 @@ def _(business_roas_psense, lift_roas_psense):
 
 
 @app.cell
-def _(business_mmm, lift_mmm, true_roas):
+def _(adjusted_mmm, lift_mmm, true_roas):
     roas_model_comparison = xr.concat(
-        [business_mmm.idata["posterior"]["ROAS"], lift_mmm.idata["posterior"]["ROAS"]],
+        [
+            adjusted_mmm.idata["posterior"]["ROAS"],
+            lift_mmm.idata["posterior"]["ROAS"],
+        ],
         dim="model",
     ).assign_coords(model=["business_prior", "lift_calibrated"])
 
-    _fig, _axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 4), layout="constrained")
+    _fig, _axes = plt.subplots(
+        nrows=1, ncols=2, figsize=(12, 4), layout="constrained"
+    )
     for channel, ax in zip(["x1", "x2"], _axes):
-        for model_name, color in [("business_prior", "C0"), ("lift_calibrated", "C1")]:
-            values = roas_model_comparison.sel(model=model_name, channel=channel).values.ravel()
-            ax.hist(values, bins=40, density=True, alpha=0.45, color=color, label=model_name)
-        ax.axvline(true_roas.sel(channel=channel), color="black", linestyle="--", linewidth=2, label="true ROAS")
+        for model_name, color in [
+            ("business_prior", "C0"),
+            ("lift_calibrated", "C1"),
+        ]:
+            values = roas_model_comparison.sel(
+                model=model_name, channel=channel
+            ).values.ravel()
+            ax.hist(
+                values,
+                bins=40,
+                density=True,
+                alpha=0.45,
+                color=color,
+                label=model_name,
+            )
+        ax.axvline(
+            true_roas.sel(channel=channel),
+            color="black",
+            linestyle="--",
+            linewidth=2,
+            label="true ROAS",
+        )
         ax.set(title=f"{channel} ROAS", xlabel="ROAS")
     _axes[0].legend()
-    _fig.suptitle("ROAS posterior: business-prior vs lift-calibrated", fontweight="bold")
+    _fig.suptitle(
+        "ROAS posterior: business-prior vs lift-calibrated", fontweight="bold"
+    )
     _fig
     return
 
