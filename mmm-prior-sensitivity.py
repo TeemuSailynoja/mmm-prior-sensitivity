@@ -307,7 +307,7 @@ def _(business_mmm, true_roas_x1, true_roas_x2):
 
             Channel `x1` shows significant prior-observation conflict: the business expects ROAS around 100, but the model's posterior is far from that expectation. This conflict is valuable—it signals that the observational data alone cannot disentangle the channel effect from the unobserved confounder `z`.
 
-            **This is not a failure.** It is a learning opportunity: when the model and the business disagree, we should ask *what additional information* would resolve the conflict. The answer is a lift test.
+            **This is not a failure.** It is a learning opportunity: when the model and the business disagree, we should ask *what additional information* would resolve the conflict. As discussed in the [PyMC-Marketing experimentation guide](https://www.pymc-marketing.io/en/latest/notebooks/mmm/mmm_roas_experimentation.html), we can estimate how much a lift test would reduce our uncertainty on ROAS—and use that to justify whether the experiment is worth running.
             """)
         ]
     )
@@ -318,6 +318,21 @@ def _(business_mmm, true_roas_x1, true_roas_x2):
 def _():
     mo.md(r"""
     ## ROAS prior sensitivity to media priors
+
+    We now ask whether all-time ROAS depends on the media priors. To answer this, we use **power scaling sensitivity analysis** ([Kallioinen et al., 2024](https://link.springer.com/article/10.1007/s11222-023-10366-5)), a diagnostic that evaluates how much influence each prior or likelihood component exerts on the posterior by scaling its log-density with a power parameter α.
+
+    The standard posterior is
+
+    $$p(\theta \mid y) \propto p(y \mid \theta) \, p(\theta)$$
+
+    and we consider two power-scaling variants:
+
+    - **Prior sensitivity**: $p(\theta \mid y) \propto p(y \mid \theta) \, p(\theta)^\alpha$
+    - **Likelihood sensitivity**: $p(\theta \mid y) \propto p(y \mid \theta)^\alpha \, p(\theta)$
+
+    When α = 1 the model is fitted to the original specification; when α < 1 that component is weakened, letting the rest of the model dominate; and when α > 1 it is amplified. By examining how posterior quantities of interest change across a range of α values, we can see how the tension between the prior and the likelihood plays out—and how the posterior shifts when we tilt the balance toward one side or the other.
+
+    A key practical advantage is that we can approximate the posterior at different α values using **Pareto-smoothed importance sampling (PSIS)** ([Vehtari et al., 2024](https://www.jmlr.org/papers/v25/19-556.html)) from the original posterior samples, without refitting the model. This makes the whole process computationally very efficient and fast.
 
     We now ask whether all-time ROAS depends on the media priors:
 
@@ -567,6 +582,22 @@ def _():
     - **Validate assumptions before fitting.** Taking business priors into account before fitting the model means validating the assumptions are agreed upon between the modeling team and the business side.
     - **The goal is certainty, not proof.** The aim is not to prove the business right or wrong, but to be more certain about the results. This builds trust in the model.
     - **Suggest experiments to resolve disagreements.** When priors and observations conflict, the response should be to design experiments (lift tests, geo experiments, etc.) that provide the additional information needed to resolve the conflict.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    ## References
+
+    - **Power scaling sensitivity analysis**: Kallioinen, N., Paananen, T., Bürkner, P.-C., & Vehtari, A. (2024). Detecting and diagnosing prior and likelihood sensitivity with power-scaling. *Statistical Computing*, 34, 46. [https://link.springer.com/article/10.1007/s11222-023-10366-5](https://link.springer.com/article/10.1007/s11222-023-10366-5)
+
+    - **Pareto-smoothed importance sampling (PSIS)**: Vehtari, A., Simpson, D., Gelman, A., Yao, Y., & Gabry, J. (2024). Pareto smoothed importance sampling. *Journal of Machine Learning Research*, 25(72), 1–58. [https://www.jmlr.org/papers/v25/19-556.html](https://www.jmlr.org/papers/v25/19-556.html)
+
+    - **Exploratory Analysis of Bayesian Models (EABM)**: Worked examples and tutorials on power scaling, LOO, and model diagnostics. [https://arviz-devs.github.io/EABM/](https://arviz-devs.github.io/EABM/)
+
+    - **PyMC-Marketing ROAS case study**: The base model and lift-test methodology. [https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_roas.html](https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_roas.html)
     """)
     return
 
