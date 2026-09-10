@@ -558,7 +558,11 @@ def _():
     mo.md(r"""
     ## MMM with an adjusted baseline prior
 
-    We decide that the baseline prior sensitivity is not something we want in the model and we would prefer the estimate for channel 2 to be driven more strongly by the data. So we change the baseline prior to one with a
+    Before proceeding to the lift test, the modeling team reviewed the initial model and decided that the baseline prior was too informative for our purposes. We do not want the baseline (trend and seasonality) to be pulling the channel estimates away from the data — we want that component of the model to be primarily driven by the observations.
+
+    To this end, we refit the business-prior model with a weaker baseline prior: we reduce the number of HSGP basis functions from `m=100` to `m=50` and tighten the lengthscale prior from `ls_sigma=10` to `ls_sigma=5`. This makes the baseline more flexible and less constrained by the prior.
+
+    Visually, the contributions-over-time plot shows that the baseline estimate has not changed dramatically — the overall decomposition of sales into channel, trend, and seasonality components looks similar. However, the modeling team's preference is for the baseline to yield to the data rather than impose its own structure. We proceed with this adjusted model going forward, and we still observe the same conflict between the business-informed media priors and the observational data — which brings us to the lift test.
     """)
     return
 
