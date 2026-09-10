@@ -558,11 +558,11 @@ def _():
     mo.md(r"""
     ## MMM with an adjusted baseline prior
 
-    Before proceeding to the lift test, the modeling team reviewed the initial model and decided that the baseline prior was too expressive. We do not want the baseline (trend and seasonality) to impose too much structure on the decomposition — we want the channel estimates to be driven primarily by the data, not by a flexible baseline that can absorb unexplained patterns.
+    Before proceeding to the lift test, the modeling team reviewed the initial model and formed a hypothesis: the original baseline prior was slightly too flexible, absorbing some signal that should have been attributed to the media effects. If the baseline can represent too many functions, it can soak up patterns in the data that are actually driven by channel spend — and that would distort the channel estimates.
 
-    To this end, we refit the business-prior model with a less expressive baseline: we reduce the number of HSGP basis functions from `m=100` to `m=50` and tighten the lengthscale prior from `ls_sigma=10` to `ls_sigma=5`. With fewer basis functions and a tighter lengthscale prior, the baseline can represent fewer functions and is less likely to absorb long-term patterns — making it less able to compensate for missing channel effects.
+    To test this, we refit the business-prior model with a less expressive baseline: we reduce the number of HSGP basis functions from `m=100` to `m=50` and tighten the lengthscale prior from `ls_sigma=10` to `ls_sigma=5`. With fewer basis functions and a tighter lengthscale prior, the baseline can represent fewer functions and is less able to absorb long-term patterns. Any signal that the flexible baseline was previously soaking up should now be freed up and attributed to the media channels.
 
-    Visually, the contributions-over-time plot shows that the baseline estimate has not changed dramatically — the overall decomposition of sales into channel, trend, and seasonality components looks similar. However, the modeling team's preference is for the baseline to be less able to absorb unexplained variance, leaving the channel estimates more exposed to the data. We proceed with this adjusted model going forward, and we still observe the same conflict between the business-informed media priors and the observational data — which brings us to the lift test.
+    Visually, the contributions-over-time plot shows that the baseline estimate has not changed dramatically — the overall decomposition looks similar. However, the channel estimates shift as a result of the baseline giving up some of what it was previously absorbing. We proceed with this adjusted model going forward, and we still observe the same conflict between the business-informed media priors and the observational data — which brings us to the lift test.
     """)
     return
 
