@@ -9,6 +9,7 @@
 #     "numpy==2.4.6",
 #     "nutpie==0.16.11",
 #     "pandas==3.0.5",
+#     "preliz==0.12.1",
 #     "pymc==6.2.0",
 #     "pymc-extras==0.14.0",
 #     "pymc-marketing==1.1.0",
@@ -31,6 +32,7 @@ with app.setup(hide_code=True):
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
+    import preliz as pz
     import pymc as pm
     import seaborn as sns
     import xarray as xr
@@ -50,6 +52,10 @@ with app.setup(hide_code=True):
     seed = sum(map(ord, "mmm_prior_sensitivity_roas"))
     rng = np.random.default_rng(seed=seed)
 
+    # Business prior distributions (reusable across cells)
+    biz_prior_x1 = pz.distributions.Normal(100, 20)
+    biz_prior_x2 = pz.distributions.Normal(150, 50)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -61,10 +67,11 @@ def _():
 
     In this case study, I demonstrate how **lift tests can resolve conflicts between business expectations and observational data**.
 
-    We fit two models:
+    We fit three models:
 
-    1. **Business-prior MMM**: the marketing team provides their expectations for channel ROAS and these are incorporated to the MMM priors.
-    2. **Lift-calibrated MMM**: the same model plus lift-test likelihoods on the saturation curves.
+    1. **Business-prior MMM**: the marketing team provides their expectations for channel ROAS and these are incorporated as likelihood terms via `add_cost_per_target_calibration`. Media priors (adstock, saturation) are set with weakly informative defaults.
+    2. **Adjusted baseline MMM**: the same business-prior model but with a less flexible baseline — fewer HSGP basis functions (`m=50` vs `100`) and a tighter lengthscale prior (`ls_sigma=5` vs `10`). This prevents the baseline from absorbing signal that should belong to the media channels.
+    3. **Lift-calibrated MMM**: the adjusted baseline model plus lift-test likelihoods on the saturation curves, providing additional information to disentangle channel effects from unobserved confounders.
 
     We focus on media priors (adstock and saturation parameters) and business priors (channel ROAS expectations) as the key sources of prior-observation conflict.
     """)
@@ -98,7 +105,6 @@ def _():
         date_column,
         model_df,
         target_column,
-        true_roas,
         true_roas_x1,
         true_roas_x2,
         y,
@@ -265,7 +271,7 @@ def _(X, baseline_model_config, build_mmm, sampler_config, y):
 
 
 @app.cell
-def _(business_mmm, true_roas_x1, true_roas_x2):
+def _(business_mmm):
     _pc = azp.plot_dist(
         business_mmm.idata["posterior"]["ROAS"].to_dataset(name="roas"),
         col_wrap=1,
@@ -277,22 +283,13 @@ def _(business_mmm, true_roas_x1, true_roas_x2):
     )
     business_roas_fig = _pc.viz["/"]["figure"].values.item()
     business_roas_axes = business_roas_fig.axes
-    business_roas_axes[0].axvline(
-        true_roas_x1,
-        color="black",
-        linestyle="--",
-        linewidth=2,
-        label="true ROAS",
-    )
+
+    # Overlay business prior distributions on the posterior
+    biz_prior_x1.plot_pdf(color="C2", linestyle="--", linewidth=2, ax=business_roas_axes[0], legend=None)
+    biz_prior_x2.plot_pdf(color="C2", linestyle="--", linewidth=2, ax=business_roas_axes[1], legend=None)
+
     business_roas_axes[0].legend(loc="upper right")
     business_roas_axes[0].set(title="Business-prior ROAS: x1")
-    business_roas_axes[1].axvline(
-        true_roas_x2,
-        color="black",
-        linestyle="--",
-        linewidth=2,
-        label="true ROAS",
-    )
     business_roas_axes[1].legend(loc="upper right")
     business_roas_axes[1].set(title="Business-prior ROAS: x2", xlabel="ROAS")
     business_roas_fig.suptitle(
@@ -304,7 +301,7 @@ def _(business_mmm, true_roas_x1, true_roas_x2):
 
 
 @app.cell
-def _(business_mmm, true_roas_x1, true_roas_x2):
+def _(business_mmm):
     roas_x1_mean = (
         business_mmm.idata["posterior"]["ROAS"].sel(channel="x1").mean().values
     )
@@ -318,10 +315,10 @@ def _(business_mmm, true_roas_x1, true_roas_x2):
 
             The business-prior model produces ROAS estimates that conflict with the business's prior expectations for channel `x1`:
 
-            | Channel | Business prior | Posterior mean | True ROAS |
-            |---------|---------------|----------------|-----------|
-            | x1      | 100           | {roas_x1_mean:.1f} | {true_roas_x1:.1f} |
-            | x2      | 150           | {roas_x2_mean:.1f} | {true_roas_x2:.1f} |
+            | Channel | Business prior (μ, σ) | Posterior mean |
+            |---------|----------------------|----------------|
+            | x1      | (100, 20)            | {roas_x1_mean:.1f} |
+            | x2      | (150, 50)            | {roas_x2_mean:.1f} |
 
             Channel `x1` shows significant prior-observation conflict: the business expects ROAS around 100, but the model's posterior is far from that expectation. This conflict is valuable—it signals that the observational data alone cannot disentangle the channel effect from the unobserved confounder `z`.
 
@@ -684,7 +681,7 @@ def _(lift_mmm):
 
 
 @app.cell
-def _(lift_mmm, true_roas_x1, true_roas_x2):
+def _(lift_mmm):
     lift_mmm.idata["posterior"]["ROAS"]
     _pc = azp.plot_dist(
         lift_mmm.idata["posterior"]["ROAS"].to_dataset(name="roas"),
@@ -697,22 +694,13 @@ def _(lift_mmm, true_roas_x1, true_roas_x2):
     )
     lift_roas_fig = _pc.viz["/"]["figure"].values.item()
     lift_roas_axes = lift_roas_fig.axes
-    lift_roas_axes[0].axvline(
-        true_roas_x1,
-        color="black",
-        linestyle="--",
-        linewidth=2,
-        label="true ROAS",
-    )
+
+    # Overlay business prior distributions on the posterior
+    biz_prior_x1.plot_pdf(color="C2", linestyle="--", linewidth=2, label="Business prior", ax=lift_roas_axes[0])
+    biz_prior_x2.plot_pdf(color="C2", linestyle="--", linewidth=2, label="Business prior", ax=lift_roas_axes[1])
+
     lift_roas_axes[0].legend(loc="upper right")
     lift_roas_axes[0].set(title="Lift-calibrated ROAS: x1")
-    lift_roas_axes[1].axvline(
-        true_roas_x2,
-        color="black",
-        linestyle="--",
-        linewidth=2,
-        label="true ROAS",
-    )
     lift_roas_axes[1].legend(loc="upper right")
     lift_roas_axes[1].set(title="Lift-calibrated ROAS: x2", xlabel="ROAS")
     lift_roas_fig.suptitle(
@@ -752,7 +740,7 @@ def _():
     mo.md(r"""
     ## Comparing sensitivity before and after lift calibration
 
-    The ideal pattern is not merely that ROAS moves toward the truth. We also want the prior-observation conflict to resolve: the business prior and the observational data should agree after the lift test provides additional information.
+    The ideal pattern is not merely that ROAS shifts in some direction. We want the prior-observation conflict to resolve: the business prior and the lift-informed posterior should agree after the lift test provides additional information.
     """)
     return
 
@@ -771,7 +759,7 @@ def _(business_roas_psense, lift_roas_psense):
 
 
 @app.cell
-def _(adjusted_mmm, lift_mmm, true_roas):
+def _(adjusted_mmm, lift_mmm):
     roas_model_comparison = xr.concat(
         [
             adjusted_mmm.idata["posterior"]["ROAS"],
@@ -799,13 +787,11 @@ def _(adjusted_mmm, lift_mmm, true_roas):
                 color=color,
                 label=model_name,
             )
-        ax.axvline(
-            true_roas.sel(channel=channel),
-            color="black",
-            linestyle="--",
-            linewidth=2,
-            label="true ROAS",
-        )
+        # Overlay business prior
+        if channel == "x1":
+            biz_prior_x1.plot_pdf(color="C2", linestyle="--", linewidth=2, label="Business prior", ax=ax)
+        else:
+            biz_prior_x2.plot_pdf(color="C2", linestyle="--", linewidth=2, label="Business prior", ax=ax)
         ax.set(title=f"{channel} ROAS", xlabel="ROAS")
     _axes[0].legend()
     _fig.suptitle(
@@ -822,6 +808,7 @@ def _():
 
     - **Prior-observation conflict is a feature, not a bug.** When the model's posterior disagrees with the business's prior expectations, it signals that the observational data alone cannot fully identify the channel effects. This is a valuable discussion point.
     - **Lift tests resolve conflict by adding information.** The lift test does not simply "confirm" one side or the other; it provides additional data that helps the model disentangle the channel effect from confounding.
+    - **Tuning the baseline matters.** A baseline that is too flexible can absorb media signal and distort channel estimates. The adjusted baseline (fewer HSGP basis functions, tighter lengthscale) gives the media channels more room to explain the data.
     - **Validate assumptions before fitting.** Taking business priors into account before fitting the model means validating the assumptions are agreed upon between the modeling team and the business side.
     - **The goal is certainty, not proof.** The aim is not to prove the business right or wrong, but to be more certain about the results. This builds trust in the model.
     - **Suggest experiments to resolve disagreements.** When priors and observations conflict, the response should be to design experiments (lift tests, geo experiments, etc.) that provide the additional information needed to resolve the conflict.
