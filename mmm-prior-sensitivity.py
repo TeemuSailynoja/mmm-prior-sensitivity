@@ -49,8 +49,6 @@ with app.setup(hide_code=True):
     seed = sum(map(ord, "mmm_prior_sensitivity_roas"))
     rng = np.random.default_rng(seed=seed)
 
-    biz_prior_x1 = pz.distributions.Normal(100, 20)
-    biz_prior_x2 = pz.distributions.Normal(150, 50)
 
 
 @app.cell(hide_code=True)
@@ -129,14 +127,6 @@ def _(model_df):
 
 
 @app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    This quick visualization provides context for the model inputs and target.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
 def _(business_prior_df):
     mo.vstack(
         [
@@ -165,6 +155,10 @@ def _():
             "sigma": [20, 50],
         }
     )
+    _x1_prior = business_prior_df.query("channel == 'x1'").iloc[0]
+    _x2_prior = business_prior_df.query("channel == 'x2'").iloc[0]
+    biz_prior_x1 = pz.distributions.Normal(_x1_prior.roas, _x1_prior.sigma)
+    biz_prior_x2 = pz.distributions.Normal(_x2_prior.roas, _x2_prior.sigma)
 
     baseline_model_config = {
         "likelihood": Prior("Normal", sigma=Prior("HalfNormal", sigma=.5)),
@@ -198,6 +192,8 @@ def _():
     return (
         baseline_model_config,
         business_prior_df,
+        biz_prior_x1,
+        biz_prior_x2,
         lift_sampler_config,
         sampler_config,
     )
@@ -260,6 +256,7 @@ def _(channel_columns, date_column, target_column):
             var_names=["ROAS"],
             ci_prob=0.94,
             ci_kind="hdi",
+            round_to="none",
         )
         interval_columns = [
             column for column in summary.columns if column.startswith("hdi")
@@ -599,7 +596,7 @@ def _(business_mmm):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    The remaining decision-relevant conflict is concentrated in `x1` ROAS, which is sensitive to both the stakeholder-informed business prior and the observational likelihood. We cannot resolve that conflict by deciding that either source must be correct. Instead of tuning the model toward either one, we return to the marketing team and recommend lift tests that directly inform the channel response.
+    The `x1` ROAS posterior responds in opposite directions when strengthening the business prior and the likelihood, which is the decision-relevant potential conflict identified above. The `x2` ROAS estimate is less sensitive to this business-prior perturbation. We cannot resolve the `x1` conflict by deciding that either source must be correct. Instead of tuning the model toward either one, we return to the marketing team and recommend lift tests that directly inform the channel response.
     """)
     return
 
@@ -623,6 +620,7 @@ def _(X):
             "channel": ["x1", "x1"],
             "x": [0.25, 0.8],
             "delta_x": [0.25, 0.8],
+            # Synthetic x1 lift effects from the simulation's data-generating process.
             "delta_y": [23.34703279570842, 74.71050494626694],
             "sigma": [3, 3],
             "date": pd.to_datetime(
@@ -685,6 +683,14 @@ def _(contribution_plot, lift_mmm, model_df):
     return
 
 
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    The lift tests directly inform the `x1` response; the ROAS comparison below shows their effect on the reporting target.
+    """)
+    return
+
+
 @app.cell
 def _(business_mmm, lift_mmm, roas_summary):
     pd.concat(
@@ -741,6 +747,14 @@ def _(business_mmm, lift_mmm):
         "ROAS posterior before and after lift tests", fontweight="bold"
     )
     _fig
+    return (roas_model_comparison,)
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    The lift tests move the `x1` ROAS posterior substantially and reduce its uncertainty, while `x2` changes little because it receives no lift-test information. We next check whether this update also reduces sensitivity to the business prior.
+    """)
     return
 
 
@@ -779,9 +793,9 @@ def _(business_psense_details, lift_psense_details):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    The observational sales and lift-test measurements together form the likelihood for the updated model. The sales observations alone are confounded, but the lift tests add causal evidence and help correct the resulting ROAS bias. In this case that evidence happens to align with the business prior.
+    The observational sales and lift-test measurements together form the likelihood for the updated model. The sales observations alone are confounded, but the lift tests add causal evidence about the `x1` response and can help correct the resulting ROAS bias. In this case that evidence happens to align with the business prior.
 
-    The parameter-level table still contains warnings about potential prior-likelihood conflicts. We do not investigate those warnings further here because this case study focuses on all-time channel ROAS, not on optimizing spend or precisely characterizing each saturation curve. If a decision required the shape of a saturation curve—for example, budget optimization or spend-response planning—we would need additional experiments or external information targeted at identifying that curve.
+    The lift update changes the parameter-level warning pattern, including higher likelihood sensitivity for media parameters and new potential prior-likelihood conflict flags. We do not investigate those warnings further here because this case study focuses on all-time channel ROAS, not on optimizing spend or precisely characterizing each saturation curve. If a decision required the shape of a saturation curve—for example, budget optimization or spend-response planning—we would need additional experiments or external information targeted at identifying that curve.
 
     The reporting target is nevertheless stable: ROAS remains below the practical threshold for the media, baseline, and seasonality prior blocks, while sensitivity to the business prior falls below the threshold. The earlier ROAS prior-likelihood conflict is therefore no longer detected by the power-scaling diagnostic.
     """)
@@ -813,14 +827,8 @@ def _(raw_df):
 
 
 @app.cell
-def _(business_mmm, lift_mmm):
-    posterior_roas = xr.concat(
-        [
-            business_mmm.idata["posterior"]["ROAS"],
-            lift_mmm.idata["posterior"]["ROAS"],
-        ],
-        dim="model",
-    ).assign_coords(model=["observational", "lift_calibrated"])
+def _(roas_model_comparison):
+    posterior_roas = roas_model_comparison
     return (posterior_roas,)
 
 
@@ -863,13 +871,21 @@ def _(posterior_roas, true_roas):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
+    Retrospectively, the lift-calibrated `x1` posterior moves closer to the synthetic truth, but its 94% HDI still does not cover that value. The `x2` posterior receives no lift-test information and its interval also does not cover the truth, so it should not be treated as validated. This illustrates that low prior sensitivity is not evidence that an estimate is correct.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
     **Reporting checklist**
 
     - Define the quantity of interest before fitting; here it is all-time channel ROAS.
     - Check prior sensitivity for that quantity after the initial fit, not only generic parameter diagnostics.
     - Distinguish sensitivity in internal parameters from sensitivity in the reporting target.
     - If the model and business prior disagree, report the conflict and propose evidence that would resolve it.
-    - Lift tests can add enough causal information that ROAS is no longer meaningfully sensitive to the original prior choices.
+    - Lift tests can reduce ROAS prior sensitivity, but low sensitivity is not validation against external truth.
     """)
     return
 
