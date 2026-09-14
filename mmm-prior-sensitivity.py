@@ -256,16 +256,20 @@ def _(channel_columns, date_column, target_column):
             var_names=[var.name for var in mmm.model.free_RVs],
             kind="diagnostics",
         )
+        numeric_diagnostics = diagnostics[
+            ["r_hat", "ess_bulk", "ess_tail"]
+        ].apply(pd.to_numeric, errors="coerce")
         return pd.Series(
             {
                 "divergences": int(
                     mmm.idata["sample_stats"]["diverging"].sum().item()
                 ),
-                "max_r_hat": diagnostics["r_hat"].max(),
-                "min_ess_bulk": diagnostics["ess_bulk"].min(),
-                "min_ess_tail": diagnostics["ess_tail"].min(),
+                "max_r_hat": numeric_diagnostics["r_hat"].max(),
+                "min_ess_bulk": numeric_diagnostics["ess_bulk"].min(),
+                "min_ess_tail": numeric_diagnostics["ess_tail"].min(),
             },
             name="diagnostic",
+            dtype=float,
         ).round(3)
 
     return build_mmm, convergence_summary, finish_model, roas_summary
