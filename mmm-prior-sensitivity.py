@@ -54,20 +54,18 @@ with app.setup(hide_code=True):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    # Prior Sensitivity in the MMM Workflow
+    # Prior and Likelihood Sensitivity in the MMM Workflow
 
-    This case study uses the synthetic, confounded data from PyMC-Marketing's
-    [ROAS lift-test case study](https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_roas.html).
-    MMMs often combine separately specified priors because it is difficult to encode every dependency between model parameters. A prior intended to be weak can become influential through its interaction with the likelihood or other model components, while some posterior quantities may be only weakly informed by the observed data. Power-scaling sensitivity analysis checks which posterior quantities respond to the prior or likelihood, revealing unintended prior influence, weak likelihood information, and potential tension between deliberately informative prior knowledge and the data.
+    MMMs often combine separately specified priors because encoding every dependency between model parameters is difficult. A prior intended to be weak can become influential through its interaction with other model components, while some posterior quantities may be only weakly informed by the observed data. Prior and likelihood sensitivity analysis checks which posterior quantities respond to the prior or likelihood, revealing unintended prior influence, weak likelihood information, and potential tension between prior knowledge and the data.
 
-    The goal is not to introduce every MMM diagnostic, but to show one practical workflow:
+    The goal here is not to introduce every MMM diagnostic, but to show one practical workflow:
 
     1. fit an initial MMM with a stakeholder-informed **business prior** on ROAS,
     2. distinguish sensitivity in internal parameters from sensitivity in the ROAS estimate,
     3. communicate the decision-relevant conflict instead of tuning it away, and
     4. add lift-test evidence to see whether the conflict and prior sensitivity disappear.
 
-    We keep the synthetic true ROAS hidden until the end, so the modeling decisions are based on diagnostics and domain assumptions rather than the answer key.
+    This case study uses the synthetic, confounded data from PyMC-Marketing's [ROAS lift-test case study](https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_roas.html). We keep the synthetic true ROAS hidden until the end, so the modeling decisions are based on diagnostics and domain assumptions rather than the answer key.
     """)
     return
 
@@ -137,7 +135,7 @@ def _(business_prior_df):
             We call these expectations the **business prior**: functionally, they express prior understanding before fitting the MMM.
             Because ROAS is a derived quantity rather than a free model parameter, PyMC-Marketing represents this prior with `add_cost_per_target_calibration`, an extra model factor on the implied ROAS.
 
-            The initial model also has weakly informative media priors and a flexible time-varying baseline whose amplitude prior allows substantial non-media movement.
+            The initial model also has weakly informative media priors, a flexible time-varying baseline intended to capture non-media-related trends in sales, and a separate yearly seasonality component.
             """),
             business_prior_df,
         ]
@@ -331,7 +329,7 @@ def _(business_mmm, convergence_summary):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    Before focusing on ROAS, we inspect the model's estimated channel, baseline, and seasonal contributions as a sense check of the contribution decomposition. The fitted baseline captures an increasing long-run trend. The seasonality estimate and the `x1` media contribution both show recurring temporal structure, so they could plausibly compete to explain some variation.
+    Let us also inspect the estimated channel, baseline, and seasonal contributions as a sense check of the contribution decomposition. The fitted baseline captures an increasing long-run trend. The seasonality estimate and the `x1` media contribution both show recurring temporal structure, so they could plausibly compete to explain some variation.
     """)
     return
 
@@ -423,11 +421,11 @@ def _():
 
     We begin with one focused call to `az.psense_summary`. The three arguments identify different parts of the analysis:
 
-    - `var_names` selects the **posterior targets** whose sensitivity we want to measure;
+    - `var_names` selects the **posterior or predictive targets** whose sensitivity we want to measure;
     - `prior_var_names` selects the prior term or block that we perturb;
     - `likelihood_var_names` selects the likelihood term or block that we perturb.
 
-    In this example we perturb only the prior on `saturation_beta`, while measuring the response of ROAS and both saturation parameters. This is useful because changing one prior can affect several jointly estimated posterior quantities.
+    In this example we perturb the prior on `saturation_beta` and the likelihood while measuring their effects on ROAS and both saturation parameters. This illustrates how changing one prior can affect several posterior quantities.
     """)
     return
 
@@ -446,15 +444,15 @@ def _(business_mmm):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    The `prior` and `likelihood` columns quantify how much each posterior target changes under a small perturbation. Values above 0.05 are a practical flag for further investigation rather than a mechanical pass/fail rule.
+    The `prior` and `likelihood` columns quantify how much each posterior target changes under a small perturbation through a similarity distance on a scale from 0 to 1. Prior sensitivity above 0.05 triggers a flag for further investigation.
 
     This compact example contains each type of result we need to interpret:
 
-    - A check mark means that no prior-related warning is triggered. ROAS is nearly insensitive to the `saturation_beta` prior even though it responds to the likelihood, so the prior on this individual parameter does not meaningfully determine our final reporting target.
-    - **Potential prior-data conflict** means that the posterior target responds to both the selected prior and the likelihood. For `x1`, both saturation parameters are flagged. The summary identifies potential tension; the directional plot below shows whether strengthening the prior and likelihood pulls the posterior summaries in different directions.
-    - **Potential strong prior / weak likelihood** means that the target responds to the prior but only weakly to the likelihood. For `x2`, the individual saturation parameters are therefore weakly informed by the observed sales data relative to the prior.
+    - A check mark means that no prior-related warning is triggered. In our case, ROAS is not sensitive to the `saturation_beta` prior. For `x1`, the value 0.272 under `likelihood` indicates that the posterior is sensitive to the likelihood.
+    - **Potential prior-data conflict** means that the posterior target responds to both the selected prior and the likelihood. For `x1`, both saturation parameters are flagged. The summary identifies potential conflict; the directional plot below shows whether strengthening the prior and likelihood pulls the posterior summaries in different directions.
+    - **Potential strong prior / weak likelihood** means that the posterior responds to the prior but only weakly to the likelihood. For `x2`, the individual saturation parameters are therefore weakly informed by the observed sales data relative to the information carried by the `saturation_beta` prior.
 
-    Notice that scaling only the `saturation_beta` prior also affects `saturation_lam`. The two parameters jointly define the saturation curve and can compensate for one another, while their joint implication for ROAS remains considerably more stable.
+    Notice that scaling only the `saturation_beta` prior also affects `saturation_lam`. The two parameters jointly define the saturation curve and can compensate for one another, while we see that their joint implication for ROAS remains considerably more stable.
     """)
     return
 
@@ -539,11 +537,11 @@ def _(business_mmm, psense_by_target_and_block):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    The matrix separates sensitivity in internal model parameters from sensitivity in the reporting target. Individual saturation and seasonality parameters can be sensitive because multiple model components can explain similar temporal patterns. That does not automatically imply that all-time ROAS is sensitive: ROAS depends on the joint media response rather than on either saturation parameter in isolation.
+    The matrix separates sensitivity of the internal model parameters from sensitivity of the reporting target. Individual saturation and seasonality parameters can display prior sensitivity when multiple model components are jointly explaining the observed patterns. That does not automatically imply that the conclusions of our analysis are sensitive: ROAS is not sensitive to tightening the media parameter priors.
 
-    The seasonality coefficients respond to the baseline prior. This overlap is not decision-relevant here: both components describe non-media fluctuations for which we have no observed predictors, and we do not need to attribute those fluctuations precisely between a recurring seasonal pattern and a smooth time-varying baseline. Crucially, all-time ROAS remains insensitive to both prior blocks. The seasonality-prior column rounds to `0.000` because the `Normal(0, 2)` prior is broad relative to the fitted Fourier coefficients. Its log-density therefore changes very little under local power scaling. This is an expected result for a weakly informative prior.
+    The seasonality coefficients respond to the baseline prior. This overlap is not decision-relevant for our analysis: both components describe non-media fluctuations for which we have no observed predictors, and we do not need to attribute those fluctuations precisely between a recurring seasonal pattern and a smooth time-varying baseline. Crucially, all-time ROAS remains insensitive to both prior blocks. The seasonality-prior column rounds to `0.000` because the `Normal(0, 2)` prior is broad relative to the fitted Fourier coefficients. Its density therefore changes very little under local power scaling. This is an expected result for a weakly informative prior.
 
-    We inspect the media parameters in more detail below. Their sensitivity does not automatically make all-time ROAS meaningfully sensitive: ROAS remains below the sensitivity threshold for the media, baseline, and seasonality prior blocks. The decision-relevant result is instead the sensitivity of `x1` ROAS to both the stakeholder-informed business prior and the observational likelihood.
+    Before looking at the ROAS sensitivity to both the business prior and the observed sales, which is a key result of our analysis, we inspect the individual media parameters in more detail.
     """)
     return
 
@@ -553,6 +551,14 @@ def _(business_psense_details):
     business_psense_details.query(
         "posterior_target == 'media_parameters' and prior_block == 'media_priors'"
     ).set_index("posterior_variable")[["prior", "likelihood", "diagnosis"]]
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    The table above shows that the saturation curve of channel `x2` is weakly informed by the data, while both corresponding parameters for channel `x1` show potential prior-data conflicts. Below, we can plot how some selected posterior quantities shift as we scale the priors and likelihood. We see that both the mean and the standard deviation of the posteriors for channel `x2` are not affected by the likelihood scaling, while especially the `saturation_beta` and `saturation_lam` of channel `x1` show prior and likelihood scaling pulling the posterior mean in opposite directions.
+    """)
     return
 
 
