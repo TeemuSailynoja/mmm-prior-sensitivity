@@ -233,11 +233,12 @@ def _(channel_columns, date_column, target_column):
             pm.compute_log_likelihood(mmm.idata)
             pm.stats.compute_log_prior(mmm.idata)
 
-        # Internally, the business prior is expressed as a likelihood and
-        # must be moved to the log_prior group for the sensitivity analysis.
+        # Internally, the business prior is expressed as a likelihood.
+        # Move it to log_prior so it is not double-counted in sensitivity checks.
         mmm.idata["log_prior"]["business_prior"] = mmm.idata["log_likelihood"][
             "business_prior"
         ]
+        del mmm.idata["log_likelihood"]["business_prior"]
         mmm.idata["posterior"]["ROAS"] = (
             mmm.incrementality.compute_incremental_contribution("all_time")
             / mmm.idata["constant_data"]["channel_data"].sum("date")
@@ -252,9 +253,11 @@ def _(channel_columns, date_column, target_column):
             ci_kind="hdi",
         )
         interval_columns = [
-            column for column in summary.columns if column.startswith("hdi_")
+            column for column in summary.columns if column.startswith("hdi")
         ]
-        return summary[["mean", "sd", *interval_columns]].round(1)
+        return summary[["mean", "sd", *interval_columns]].apply(
+            pd.to_numeric, errors="coerce"
+        ).round(1)
 
     def convergence_summary(mmm):
         diagnostics = az.summary(
@@ -630,9 +633,9 @@ def _():
     mo.md(r"""
     ## 2. Lift-Test Update: Adding New Evidence
 
-    Suppose the team runs two lift tests for `x1` at different spend levels.
-    Each row below is a future experimental observation: pre-test spend `x`, spend change `delta_x`, measured incremental sales `delta_y`, and its uncertainty `sigma`.
-    These measurements add likelihood information anchored to the saturation curve, so we expect the ROAS estimate to become less prior-sensitive.
+    For this synthetic case study, we construct two illustrative lift-test measurements for `x1` at different spend levels from the simulation's data-generating process. They represent the incremental sales that experiments would observe; in a real application, they would come from lift-test analysis. The initial observational model is fitted before introducing these measurements.
+
+    Each row below contains pre-test spend `x`, spend change `delta_x`, measured incremental sales `delta_y`, and its uncertainty `sigma`. These measurements add likelihood information anchored to the saturation curve, so we expect the ROAS estimate to become less prior-sensitive.
     """)
     return
 
@@ -800,9 +803,11 @@ def _(business_psense_details, lift_psense_details):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    The observational sales and lift-test measurements together form the likelihood for the updated model. The sales observtions alone are confounded, but the lift tests add causal evidence and help correct the resulting ROAS bias. In this case that evidence happens to align with the business prior.
+    The observational sales and lift-test measurements together form the likelihood for the updated model. The sales observations alone are confounded, but the lift tests add causal evidence and help correct the resulting ROAS bias. In this case that evidence happens to align with the business prior.
 
-    Some internal parameters remain sensitive after adding the experiments; two lift tests for `x1` cannot identify every media parameter or resolve every internal decomposition. The reporting target is nevertheless stable: ROAS remains below the practical threshold for the media, baseline, and seasonality prior blocks, while sensitivity to the business prior falls below the threshold. The earlier ROAS prior-likelihood conflict is therefore no longer detected by the power-scaling diagnostic.
+    The parameter-level table still contains warnings about potential prior-likelihood conflicts. We do not investigate those warnings further here because this case study focuses on all-time channel ROAS, not on optimizing spend or precisely characterizing each saturation curve. If a decision required the shape of a saturation curve—for example, budget optimization or spend-response planning—we would need additional experiments or external information targeted at identifying that curve.
+
+    The reporting target is nevertheless stable: ROAS remains below the practical threshold for the media, baseline, and seasonality prior blocks, while sensitivity to the business prior falls below the threshold. The earlier ROAS prior-likelihood conflict is therefore no longer detected by the power-scaling diagnostic.
     """)
     return
 
