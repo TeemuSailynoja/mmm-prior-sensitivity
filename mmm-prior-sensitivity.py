@@ -557,7 +557,7 @@ def _(business_psense_details):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    The table above shows that the saturation curve of channel `x2` is weakly informed by the data, while both corresponding parameters for channel `x1` show potential prior-data conflicts. Below, we can plot how some selected posterior quantities shift as we scale the priors and likelihood. We see that both the mean and the standard deviation of the posteriors for channel `x2` are not affected by the likelihood scaling, while especially the `saturation_beta` and `saturation_lam` of channel `x1` show prior and likelihood scaling pulling the posterior mean in opposite directions.
+    The table above shows that the saturation curve of channel `x2` is weakly informed by the data, while both corresponding parameters for channel `x1` show potential prior-data conflicts. Below, we can plot how some selected posterior quantities shift as we scale the priors and likelihood. We see that both the mean and the standard deviation of the posteriors for channel `x2` are barely affected by the likelihood scaling, while especially the `saturation_beta` and `saturation_lam` of channel `x1` show prior and likelihood scaling pulling the posterior mean in opposite directions.
     """)
     return
 
