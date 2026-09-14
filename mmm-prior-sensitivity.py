@@ -209,7 +209,7 @@ def _(channel_columns, date_column, target_column):
             model_config=model_config,
         )
 
-    def finish_model(mmm, X, y, sampler_config, business_prior_df=None):
+    def finish_model(mmm, X, y, sampler_config, business_prior_df):
         mmm.add_original_scale_contribution_variable(
             var=[
                 "channel_contribution",
@@ -734,7 +734,7 @@ def _(business_mmm, lift_mmm):
     _fig, _axes = plt.subplots(
         nrows=1, ncols=2, figsize=(12, 4), layout="constrained"
     )
-    for _channel, _ax in zip(["x1", "x2"], _axes, strict=False):
+    for _channel, _ax in zip(["x1", "x2"], _axes, strict=True):
         for _model_name, _color in [
             ("observational", "C0"),
             ("lift_calibrated", "C1"),
@@ -853,7 +853,7 @@ def _(posterior_roas, true_roas):
     _fig, _axes = plt.subplots(
         nrows=1, ncols=2, figsize=(12, 4), layout="constrained"
     )
-    for _channel, _ax in zip(["x1", "x2"], _axes, strict=False):
+    for _channel, _ax in zip(["x1", "x2"], _axes, strict=True):
         for _model_name, _color in [
             ("observational", "C0"),
             ("lift_calibrated", "C3"),
