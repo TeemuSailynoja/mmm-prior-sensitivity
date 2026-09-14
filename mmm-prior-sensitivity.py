@@ -27,7 +27,6 @@ with app.setup(hide_code=True):
     import warnings
 
     import arviz as az
-    import arviz_plots as azp
     import marimo as mo
     import matplotlib.pyplot as plt
     import numpy as np
@@ -61,6 +60,8 @@ def _():
 
     This case study uses the synthetic, confounded data from PyMC-Marketing's
     [ROAS lift-test case study](https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_roas.html).
+    MMMs often combine separately specified priors because it is difficult to encode every dependency between model parameters. A prior intended to be weak can become influential through its interaction with the likelihood or other model components, while some posterior quantities may be only weakly informed by the observed data. Power-scaling sensitivity analysis checks which posterior quantities respond to the prior or likelihood, revealing unintended prior influence, weak likelihood information, and potential tension between deliberately informative prior knowledge and the data.
+
     The goal is not to introduce every MMM diagnostic, but to show one practical workflow:
 
     1. fit an initial MMM with a stakeholder-informed **business prior** on ROAS,
@@ -124,6 +125,14 @@ def _(model_df):
     )
     _axes[1].set_title("Channel spend")
     _fig
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    This quick visualization provides context for the model inputs and target.
+    """)
     return
 
 
@@ -367,40 +376,8 @@ def _(business_mmm, model_df):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    Our reporting target is all-time channel ROAS. We therefore compare its posterior distribution with the stakeholder-informed business prior before formally measuring how sensitive that posterior is to the different sources of information.
+    The fitted baseline captures an increasing long-run trend. The seasonality estimate and the `x2` media contribution both show recurring temporal structure, so they could plausibly compete to explain some variation. Later, the seasonality target has low sensitivity to the media-prior block, which provides no evidence from this diagnostic that the media priors materially determine the seasonality estimate.
     """)
-    return
-
-
-@app.cell
-def _(business_mmm):
-    _pc = azp.plot_dist(
-        business_mmm.idata["posterior"]["ROAS"].to_dataset(name="roas"),
-        col_wrap=1,
-        figure_kwargs={
-            "figsize": (10, 6),
-            "sharex": True,
-            "layout": "constrained",
-        },
-    )
-    _fig = _pc.viz["/"]["figure"].values.item()
-    _axes = _fig.axes
-    biz_prior_x1.plot_pdf(
-        color="C2", linestyle="--", linewidth=2, ax=_axes[0], legend=None
-    )
-    biz_prior_x2.plot_pdf(
-        color="C2", linestyle="--", linewidth=2, ax=_axes[1], legend=None
-    )
-    _axes[0].lines[-1].set_label("Business prior")
-    _axes[1].lines[-1].set_label("Business prior")
-    _axes[0].legend(loc="upper right")
-    _axes[0].set(title="Initial ROAS: x1")
-    _axes[1].legend(loc="upper right")
-    _axes[1].set(title="Initial ROAS: x2", xlabel="ROAS")
-    _fig.suptitle(
-        "Initial model: ROAS posterior and business prior", fontweight="bold"
-    )
-    _fig
     return
 
 
@@ -424,7 +401,7 @@ def _():
 
     When $\alpha = 1$, the model is fitted to the original specification. When $\alpha < 1$, the scaled component is weakened; when $\alpha > 1$, it is amplified. By examining how posterior quantities of interest change as we perturb $\alpha$, we can see how tension between the priors and likelihood affects the estimates we want to report.
 
-    The following figure illustrates the effect of power scaling on a standard Normal distribution.
+    The following figure illustrates power scaling on a standard Normal distribution: $\alpha < 1$ makes the distribution wider, whereas $\alpha > 1$ makes it tighter.
     """)
     return
 
@@ -527,6 +504,7 @@ def _():
     }
 
     def psense_by_target_and_block(idata):
+        """Return aggregate and row-level PSIS sensitivity summaries for model blocks."""
         likelihood_var_names = [
             var
             for var in ["y", "lift_measurements"]
@@ -574,7 +552,7 @@ def _():
     mo.md(r"""
     The matrix separates sensitivity in internal model parameters from sensitivity in the reporting target. Individual saturation and seasonality parameters can be sensitive because multiple model components can explain similar temporal patterns. That does not automatically imply that all-time ROAS is sensitive: ROAS depends on the joint media response rather than on either saturation parameter in isolation.
 
-    The seasonality coefficients respond to the baseline prior. This overlap is not decision-relevant here: both components describe non-media fluctuations for which we have no observed predictors, and we do not need to attribute those fluctuations precisely between a recurring seasonal pattern and a smooth time-varying baseline. Crucially, all-time ROAS remains insensitive to both prior blocks.
+    The seasonality coefficients respond to the baseline prior. This overlap is not decision-relevant here: both components describe non-media fluctuations for which we have no observed predictors, and we do not need to attribute those fluctuations precisely between a recurring seasonal pattern and a smooth time-varying baseline. Crucially, all-time ROAS remains insensitive to both prior blocks. The seasonality-prior column rounds to `0.000` because the `Normal(0, 2)` prior is broad relative to the fitted Fourier coefficients. Its log-density therefore changes very little under local power scaling. This is an expected result for a weakly informative prior.
 
     We inspect the media parameters in more detail below. Sensitivity to the business prior is expected because that factor is designed to inform the implied media contribution. The more relevant modeling check is whether the supposedly weak media priors conflict with the observational likelihood.
     """)
@@ -603,6 +581,14 @@ def _(business_mmm):
         coords={"channel": ["x1", "x2"]},
         quantities=["mean", "sd"],
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    In the top-left panel, strengthening the `saturation_lam[x1]` prior increases the posterior mean, while weakening it decreases the mean. The likelihood has the opposite pattern: strengthening it decreases the posterior mean, while weakening it increases the mean. In this diagnostic, the selected media priors pull `saturation_lam[x1]` upward while the observed sales pull it downward.
+    """)
     return
 
 
