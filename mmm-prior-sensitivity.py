@@ -309,6 +309,14 @@ def _(business_mmm, convergence_summary):
     return
 
 
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    Before focusing on ROAS, we inspect how the model decomposes the observed target into channel, baseline, and seasonal contributions. This provides a first check that the fitted components reproduce the main temporal structure in the data.
+    """)
+    return
+
+
 @app.cell
 def _(business_mmm, model_df):
     # We will reuse this later
@@ -341,6 +349,14 @@ def _(business_mmm, model_df):
         business_mmm, model_df, "Initial model: component contributions"
     )
     return (contribution_plot,)
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    Our reporting target is all-time channel ROAS. We therefore compare its posterior distribution with the stakeholder-informed business prior before formally measuring how sensitive that posterior is to the different sources of information.
+    """)
+    return
 
 
 @app.cell
@@ -424,16 +440,52 @@ def _():
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    A **key practical advantage is that we do not need to refit the model**, and we can approximate the posterior at different $\alpha$ values using **Pareto-smoothed importance sampling (PSIS)** ([Vehtari et al., 2024](https://www.jmlr.org/papers/v25/19-556.html)) from the original posterior samples. This makes the check computationally efficient. Because importance reweighting can reduce the effective sample size, we deliberately retain 2,000 draws across each of six chains, for 12,000 posterior draws in total, to provide a sufficiently large sample for the sensitivity analysis.
+    A **key practical advantage is that we do not need to refit the model**. We approximate the posterior at different $\alpha$ values using **Pareto-smoothed importance sampling (PSIS)** ([Vehtari et al., 2024](https://www.jmlr.org/papers/v25/19-556.html)) from the original posterior samples. Because importance reweighting can reduce the effective sample size, we deliberately retain 2,000 draws across each of six chains, for 12,000 posterior draws in total.
 
-    We distinguish between sensitivity in internal model parameters and sensitivity in the ROAS estimate that we plan to report to the marketing team. For each posterior target, we test four prior blocks:
+    We begin with one focused call to `az.psense_summary`. The three arguments identify different parts of the analysis:
 
-    - **Media priors**: adstock (`adstock_alpha`) and saturation (`saturation_lam`, `saturation_beta`) parameters.
-    - **Baseline prior**: the prior on the time-varying intercept, which allows smooth temporal variation in non-media demand. Although the prior permits movement in either direction, the fitted baseline increases over this observation period.
-    - **Business prior**: stakeholder expectations for channel ROAS.
-    - **Seasonality prior**: the Fourier coefficients (`gamma_fourier`) governing recurring yearly variation.
+    - `var_names` selects the **posterior targets** whose sensitivity we want to measure;
+    - `prior_var_names` selects the prior term or block that we perturb;
+    - `likelihood_var_names` selects the likelihood term or block that we perturb.
 
-    Values above 0.05 are a practical flag that a posterior target changes considerably when that block is slightly strengthened or weakened. We read this as evidence for investigation, with the usual Monte Carlo uncertainty caveat, rather than as a mechanical pass/fail test.
+    In this example we perturb only the prior on `saturation_beta`, while measuring the response of ROAS and both saturation parameters. This is useful because changing one prior can affect several jointly estimated posterior quantities.
+    """)
+    return
+
+
+@app.cell
+def _(business_mmm):
+    az.psense_summary(
+        business_mmm.idata,
+        var_names=["ROAS", "saturation_lam", "saturation_beta"],
+        prior_var_names=["saturation_beta"],
+        likelihood_var_names=["y"],
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    The `prior` and `likelihood` columns quantify how much each posterior target changes under a small perturbation. Values above 0.05 are a practical flag for further investigation rather than a mechanical pass/fail rule.
+
+    This compact example contains each type of result we need to interpret:
+
+    - A check mark means that no prior-related warning is triggered. ROAS is nearly insensitive to the `saturation_beta` prior even though it responds to the likelihood, so the prior on this individual parameter does not materially determine our final reporting target.
+    - **Potential prior-data conflict** means that the posterior target responds to both the selected prior and the likelihood. For `x1`, both saturation parameters are flagged. The summary identifies potential tension; the directional plot below shows whether strengthening the prior and likelihood pulls the posterior summaries in different directions.
+    - **Potential strong prior / weak likelihood** means that the target responds to the prior but only weakly to the likelihood. For `x2`, the individual saturation parameters are therefore weakly informed by the observed sales data relative to the prior.
+
+    Notice that scaling only the `saturation_beta` prior also affects `saturation_lam`. The two parameters jointly define the saturation curve and can compensate for one another, while their joint implication for ROAS remains considerably more stable.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    We now expand the same check across the model. We group the prior terms into media, baseline, business, and seasonality blocks, and group the posterior targets into ROAS, media parameters, and seasonality coefficients.
+
+    The helper below keeps both levels of output: a compact matrix containing the maximum sensitivity within each posterior-target and prior-block combination, and the complete row-level summaries used to construct it. The matrix supports a quick scan, while the detailed results let us identify the exact parameter and channel behind any flag. Because every call reuses PSIS weights from the fitted posterior, looping over the blocks is fast and does not refit the model.
     """)
     return
 
@@ -521,12 +573,6 @@ def _(business_psense_details):
     business_psense_details.query(
         "posterior_target == 'media_parameters' and prior_block == 'media_priors'"
     ).set_index("posterior_variable")[["prior", "likelihood", "diagnosis"]]
-    return
-
-
-@app.cell
-def _(business_mmm):
-    az.psense_summary(business_mmm.idata,var_names=["ROAS", "saturation_lam", "saturation_beta"], prior_var_names=["business_prior"], likelihood_var_names=["y"])
     return
 
 
