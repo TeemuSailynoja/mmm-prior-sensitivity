@@ -464,7 +464,7 @@ def _():
     mo.md(r"""
     We now expand the same check across the model. We group the prior terms into media, baseline, business, and seasonality blocks, and group the posterior targets into ROAS, media parameters, and seasonality coefficients.
 
-    The helper below keeps both levels of output: a compact matrix containing the maximum sensitivity within each posterior-target and prior-block combination, and the complete row-level summaries used to construct it. The matrix supports a quick scan, while the detailed results let us identify the exact parameter and channel behind any flag. Because every call reuses PSIS weights from the fitted posterior, looping over the blocks is fast and does not refit the model.
+    The helper below keeps both levels of output: a compact matrix containing the maximum sensitivity within each posterior-target and prior-block combination, and the complete row-level summaries used to construct it. The matrix supports a quick scan, while the detailed results let us identify the exact parameter and channel behind any flag. Because every call uses PSIS to reweight the fitted posterior draws, looping over the blocks is fast and does not refit the model.
     """)
     return
 
