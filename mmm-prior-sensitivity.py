@@ -334,7 +334,7 @@ def _(business_mmm, convergence_summary):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    Before focusing on ROAS, we inspect how the model decomposes the observed target into channel, baseline, and seasonal contributions. This provides a first check that the fitted components reproduce the main temporal structure in the data.
+    Before focusing on ROAS, we inspect the model's estimated channel, baseline, and seasonal contributions as a sense check of the contribution decomposition. The fitted baseline captures an increasing long-run trend. The seasonality estimate and the `x1` media contribution both show recurring temporal structure, so they could plausibly compete to explain some variation.
     """)
     return
 
@@ -371,14 +371,6 @@ def _(business_mmm, model_df):
         business_mmm, model_df, "Initial model: component contributions"
     )
     return (contribution_plot,)
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    The fitted baseline captures an increasing long-run trend. The seasonality estimate and the `x2` media contribution both show recurring temporal structure, so they could plausibly compete to explain some variation. Later, the seasonality target has low sensitivity to the media-prior block, which provides no evidence from this diagnostic that the media priors materially determine the seasonality estimate.
-    """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -461,7 +453,7 @@ def _():
 
     This compact example contains each type of result we need to interpret:
 
-    - A check mark means that no prior-related warning is triggered. ROAS is nearly insensitive to the `saturation_beta` prior even though it responds to the likelihood, so the prior on this individual parameter does not materially determine our final reporting target.
+    - A check mark means that no prior-related warning is triggered. ROAS is nearly insensitive to the `saturation_beta` prior even though it responds to the likelihood, so the prior on this individual parameter does not meaningfully determine our final reporting target.
     - **Potential prior-data conflict** means that the posterior target responds to both the selected prior and the likelihood. For `x1`, both saturation parameters are flagged. The summary identifies potential tension; the directional plot below shows whether strengthening the prior and likelihood pulls the posterior summaries in different directions.
     - **Potential strong prior / weak likelihood** means that the target responds to the prior but only weakly to the likelihood. For `x2`, the individual saturation parameters are therefore weakly informed by the observed sales data relative to the prior.
 
@@ -554,7 +546,7 @@ def _():
 
     The seasonality coefficients respond to the baseline prior. This overlap is not decision-relevant here: both components describe non-media fluctuations for which we have no observed predictors, and we do not need to attribute those fluctuations precisely between a recurring seasonal pattern and a smooth time-varying baseline. Crucially, all-time ROAS remains insensitive to both prior blocks. The seasonality-prior column rounds to `0.000` because the `Normal(0, 2)` prior is broad relative to the fitted Fourier coefficients. Its log-density therefore changes very little under local power scaling. This is an expected result for a weakly informative prior.
 
-    We inspect the media parameters in more detail below. Sensitivity to the business prior is expected because that factor is designed to inform the implied media contribution. The more relevant modeling check is whether the supposedly weak media priors conflict with the observational likelihood.
+    We inspect the media parameters in more detail below. Their sensitivity does not automatically make all-time ROAS meaningfully sensitive: ROAS remains below the sensitivity threshold for the media, baseline, and seasonality prior blocks. The decision-relevant result is instead the sensitivity of `x1` ROAS to both the stakeholder-informed business prior and the observational likelihood.
     """)
     return
 
@@ -607,8 +599,6 @@ def _(business_mmm):
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    The saturation-rate and saturation-amplitude parameters are individually sensitive to their priors and to the likelihood, indicating that the observational data do not identify each parameter separately. However, their joint implications are more stable: all-time ROAS remains below the sensitivity threshold for the media, baseline, and seasonality prior blocks.
-
     The remaining decision-relevant conflict is concentrated in `x1` ROAS, which is sensitive to both the stakeholder-informed business prior and the observational likelihood. We cannot resolve that conflict by deciding that either source must be correct. Instead of tuning the model toward either one, we return to the marketing team and recommend lift tests that directly inform the channel response.
     """)
     return
@@ -879,7 +869,7 @@ def _():
     - Check prior sensitivity for that quantity after the initial fit, not only generic parameter diagnostics.
     - Distinguish sensitivity in internal parameters from sensitivity in the reporting target.
     - If the model and business prior disagree, report the conflict and propose evidence that would resolve it.
-    - Lift tests can add enough causal information that ROAS is no longer materially sensitive to the original prior choices.
+    - Lift tests can add enough causal information that ROAS is no longer meaningfully sensitive to the original prior choices.
     """)
     return
 
