@@ -174,11 +174,17 @@ def _():
         "cores": 6,
         "draws": 2_000,
         "random_seed": rng,
-        "target_accept": 0.94,
+        "nuts": {
+            "adaptation": "draw_diag",
+            "target_accept": 0.94,
+        },
     }
     lift_sampler_config = {
         **sampler_config,
-        "target_accept": 0.96,
+        "nuts": {
+            "adaptation": "draw_diag",
+            "target_accept": 0.96,
+        },
     }
     return (
         baseline_model_config,
